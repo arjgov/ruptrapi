@@ -1,8 +1,9 @@
 from fastapi import FastAPI
-from app.api import endpoints
+from app.core.config import settings
+from app.api.api import api_router
 
 app = FastAPI(
-    title="API Change Impact Analyzer",
+    title=settings.PROJECT_NAME,
     description="Tool to analyze breaking changes between API spec versions",
     version="0.1.0"
 )
@@ -19,4 +20,4 @@ def root():
         "redoc": "/redoc"
     }
 
-app.include_router(endpoints.router, prefix="/api/v1")
+app.include_router(api_router, prefix="/ruptrapi/v1")

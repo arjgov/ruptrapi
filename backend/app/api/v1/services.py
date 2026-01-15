@@ -9,8 +9,7 @@ from app.schemas import service as schemas
 
 router = APIRouter()
 
-# Services
-@router.post("/services/", response_model=schemas.Service)
+@router.post("/", response_model=schemas.Service)
 def create_service(service: schemas.ServiceCreate, db: Session = Depends(get_db)):
     db_service = Service(
         name=service.name,
@@ -23,12 +22,11 @@ def create_service(service: schemas.ServiceCreate, db: Session = Depends(get_db)
     db.refresh(db_service)
     return db_service
 
-@router.get("/services/", response_model=List[schemas.Service])
+@router.get("/", response_model=List[schemas.Service])
 def list_services(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(Service).offset(skip).limit(limit).all()
 
-# Specs
-@router.post("/services/{service_id}/specs/", response_model=schemas.SpecVersion)
+@router.post("/{service_id}/specs/", response_model=schemas.SpecVersion)
 def upload_spec(service_id: UUID, spec: schemas.SpecVersionCreate, db: Session = Depends(get_db)):
     # Verify service exists
     service = db.query(Service).filter(Service.id == service_id).first()
@@ -46,6 +44,6 @@ def upload_spec(service_id: UUID, spec: schemas.SpecVersionCreate, db: Session =
     db.refresh(db_spec)
     return db_spec
 
-@router.get("/services/{service_id}/specs/", response_model=List[schemas.SpecVersion])
+@router.get("/{service_id}/specs/", response_model=List[schemas.SpecVersion])
 def list_specs(service_id: UUID, db: Session = Depends(get_db)):
     return db.query(ApiSpecVersion).filter(ApiSpecVersion.service_id == service_id).all()
