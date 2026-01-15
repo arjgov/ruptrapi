@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic[email]
+pydantic-settings
+sqlalchemy
+alembic
+pyyaml
+deepdiff
+pytest
+httpx
+python-multipart
+psycopg2-binary
