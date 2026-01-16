@@ -56,6 +56,9 @@ class SpecVersionCreate(SpecVersionBase):
 class SpecVersion(SpecVersionBase):
     id: UUID
     service_id: UUID
+    organization_id: UUID
+    spec_hash: str
+    is_deleted: bool
     created_at: datetime
     
     class Config:

@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
+import json
+import hashlib
 
 from app.core.database import get_db
 from app.models.service import Service, ApiSpecVersion
@@ -82,11 +84,25 @@ def upload_spec(service_id: UUID, spec: schemas.SpecVersionCreate, db: Session =
     service = db.query(Service).filter(Service.id == service_id).first()
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
-        
+    
+    # Calculate hash
+    # Ensure consistent serialization for hashing
+    spec_str = json.dumps(spec.raw_spec, sort_keys=True)
+    spec_hash = hashlib.sha256(spec_str.encode("utf-8")).hexdigest()
+
+    # Check for duplicate hash in this service
+    existing = db.query(ApiSpecVersion).filter(
+        ApiSpecVersion.service_id == service_id,
+        ApiSpecVersion.spec_hash == spec_hash
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="This spec version has already been uploaded for this service")
+
     db_spec = ApiSpecVersion(
         service_id=service_id,
         version_label=spec.version_label,
         raw_spec=spec.raw_spec,
+        spec_hash=spec_hash,
         organization_id=service.organization_id
     )
     db.add(db_spec)
@@ -96,4 +112,12 @@ def upload_spec(service_id: UUID, spec: schemas.SpecVersionCreate, db: Session =
 
 @router.get("/{service_id}/specs/", response_model=List[schemas.SpecVersion])
 def list_specs(service_id: UUID, db: Session = Depends(get_db)):
-    return db.query(ApiSpecVersion).filter(ApiSpecVersion.service_id == service_id).all()
+    # Verify service exists (optional but good practice)
+    service = db.query(Service).filter(Service.id == service_id).first()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    return db.query(ApiSpecVersion).filter(
+        ApiSpecVersion.service_id == service_id,
+        ApiSpecVersion.is_deleted == False
+    ).all()
