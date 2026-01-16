@@ -20,17 +20,25 @@ class Organization(OrganizationBase):
         from_attributes = True
 
 # Service
+# Service
 class ServiceBase(BaseModel):
     name: str
-    base_url: Optional[str] = None
+    base_path: Optional[str] = None
     description: Optional[str] = None
 
 class ServiceCreate(ServiceBase):
     organization_id: UUID
 
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    base_path: Optional[str] = None
+    description: Optional[str] = None
+    is_deleted: Optional[bool] = None
+
 class Service(ServiceBase):
     id: UUID
     organization_id: UUID
+    is_deleted: bool
     created_at: datetime
     updated_at: datetime
 

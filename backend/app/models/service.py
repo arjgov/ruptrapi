@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, JSON, Integer
+from sqlalchemy import Column, String, ForeignKey, JSON, Integer, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.models.base import BaseEntity
@@ -7,8 +7,8 @@ class Service(BaseEntity):
     __tablename__ = "services"
     
     name = Column(String, nullable=False)
-    base_url = Column(String, nullable=True)
-    description = Column(String, nullable=True)
+    base_path = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
     
     specs = relationship("ApiSpecVersion", back_populates="service")
 
