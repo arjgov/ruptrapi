@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.models.base import BaseEntity
@@ -7,7 +7,7 @@ class Consumer(BaseEntity):
     __tablename__ = "consumers"
     
     name = Column(String, nullable=False)
-    description = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
     
     dependencies = relationship("ConsumerDependency", back_populates="consumer")
 
@@ -20,4 +20,7 @@ class ConsumerDependency(BaseEntity):
     path = Column(String, nullable=False)
     
     consumer = relationship("Consumer", back_populates="dependencies")
-    # service = relationship("Service") # Optional: relation to service
+    
+    __table_args__ = (
+        UniqueConstraint('consumer_id', 'service_id', 'http_method', 'path', name='uq_consumer_dep'),
+    )
