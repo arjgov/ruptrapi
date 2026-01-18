@@ -46,14 +46,14 @@ class Service(ServiceBase):
         from_attributes = True
 
 # Spec
-class SpecVersionBase(BaseModel):
+class ApiSpecVersionBase(BaseModel):
     version_label: str
     raw_spec: dict
 
-class SpecVersionCreate(SpecVersionBase):
+class ApiSpecVersionCreate(ApiSpecVersionBase):
     pass
 
-class SpecVersion(SpecVersionBase):
+class ApiSpecVersion(ApiSpecVersionBase):
     id: UUID
     service_id: UUID
     organization_id: UUID

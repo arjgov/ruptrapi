@@ -60,8 +60,8 @@ class Impact(ImpactBase):
 # AnalysisRun
 class AnalysisRunBase(BaseModel):
     service_id: UUID
-    old_spec_id: UUID
-    new_spec_id: UUID
+    old_spec_id: Optional[UUID] = None
+    new_spec_id: Optional[UUID] = None
 
 class AnalysisRunCreate(AnalysisRunBase):
     pass

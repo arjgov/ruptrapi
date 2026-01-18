@@ -86,7 +86,8 @@ def test_analysis_flow():
     # 6. Verify Results
     
     # Check Changes
-    changes_res = httpx.get(f"{BASE_URL}/analysis/changes/?service_id={service_id}&new_spec_id={s2_id}")
+    # Check Changes
+    changes_res = httpx.get(f"{BASE_URL}/analysis/changes/?analysis_run_id={run['id']}")
     changes = changes_res.json()
     print(f"Found {len(changes)} changes.")
     
