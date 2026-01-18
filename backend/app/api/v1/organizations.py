@@ -1,44 +1,80 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List
 from uuid import UUID
 
-from app.core.database import get_db
+from app.core.database import get_async_db
 from app.models.organization import Organization
-from app.schemas import organization as org_schemas
+from app.schemas import organization as schemas
 
 router = APIRouter()
 
-@router.post("/", response_model=org_schemas.Organization)
-def create_organization(organization: org_schemas.OrganizationCreate, db: Session = Depends(get_db)):
-    db_org = Organization(name=organization.name, slug=organization.slug)
-    db.add(db_org)
-    db.commit()
-    db.refresh(db_org)
-    return db_org
+@router.post("/", response_model=schemas.Organization)
+async def create_organization(org_in: schemas.OrganizationCreate, db: AsyncSession = Depends(get_async_db)):
+    # Check for existing
+    result = await db.execute(select(Organization).filter(Organization.slug == org_in.slug))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="Organization slug already registered")
+        
+    organization = Organization(**org_in.dict())
+    db.add(organization)
+    await db.commit()
+    await db.refresh(organization)
+    return organization
 
-@router.get("/", response_model=List[org_schemas.Organization])
-def list_organizations(
+@router.get("/", response_model=List[schemas.Organization])
+async def list_organizations(
     skip: int = 0, 
     limit: int = 100, 
     include_deleted: bool = False,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
-    query = db.query(Organization)
+    query = select(Organization).offset(skip).limit(limit)
     if not include_deleted:
         query = query.filter(Organization.is_deleted == False)
-    return query.offset(skip).limit(limit).all()
+    result = await db.execute(query)
+    return result.scalars().all()
 
-@router.patch("/{id}", response_model=org_schemas.Organization)
-def update_organization(id: UUID, organization_update: org_schemas.OrganizationUpdate, db: Session = Depends(get_db)):
-    db_org = db.query(Organization).filter(Organization.id == id).first()
-    if not db_org:
+@router.get("/{organization_id}", response_model=schemas.Organization)
+async def get_organization(organization_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(Organization).filter(Organization.id == organization_id))
+    organization = result.scalars().first()
+    if organization is None:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
-    update_data = organization_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_org, key, value)
+    return organization
 
-    db.commit()
-    db.refresh(db_org)
-    return db_org
+@router.patch("/{organization_id}", response_model=schemas.Organization)
+async def update_organization(
+    organization_id: UUID, 
+    org_in: schemas.OrganizationUpdate, 
+    db: AsyncSession = Depends(get_async_db)
+):
+    result = await db.execute(select(Organization).filter(Organization.id == organization_id))
+    organization = result.scalars().first()
+    if organization is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+        
+    for field, value in org_in.dict(exclude_unset=True).items():
+        setattr(organization, field, value)
+        
+    db.add(organization)
+    await db.commit()
+    await db.refresh(organization)
+    return organization
+
+@router.delete("/{organization_id}", response_model=schemas.Organization)
+async def delete_organization(organization_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    # Soft delete
+    result = await db.execute(select(Organization).filter(Organization.id == organization_id))
+    organization = result.scalars().first()
+    if organization is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+        
+    # Check for logic constraints (e.g. has active services) if needed
+    # For now, just soft delete
+    organization.is_deleted = True
+    db.add(organization)
+    await db.commit()
+    await db.refresh(organization)
+    return organization

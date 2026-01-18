@@ -1,16 +1,10 @@
 INFO:     Will watch for changes in these directories: ['/Users/arjungovindan/Documents/Projects/ruptrapi/backend']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [43978] using WatchFiles
-INFO:     Started server process [44041]
+INFO:     Started reloader process [46754] using WatchFiles
+INFO:     Started server process [46817]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     127.0.0.1:54391 - "POST /ruptrapi/v1/organizations/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54392 - "POST /ruptrapi/v1/services/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54393 - "POST /ruptrapi/v1/services/0bcaeb7b-af23-4ec2-8efa-9b8648634076/specs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54394 - "POST /ruptrapi/v1/services/0bcaeb7b-af23-4ec2-8efa-9b8648634076/specs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54395 - "POST /ruptrapi/v1/consumers/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54396 - "POST /ruptrapi/v1/consumers/bb59f971-a19f-43b4-ab5c-8b827324ef89/dependencies/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54397 - "POST /ruptrapi/v1/analysis/runs/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54398 - "GET /ruptrapi/v1/analysis/runs/8222e863-27a6-445f-8c55-f4c96c7af8f4 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54399 - "GET /ruptrapi/v1/analysis/changes/?service_id=0bcaeb7b-af23-4ec2-8efa-9b8648634076&new_spec_id=4933193e-ec17-46e2-8062-a4f26b97c4dd HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54400 - "GET /ruptrapi/v1/analysis/impacts/?api_change_id=2d223db1-d4bd-4830-8922-0cc41d683026 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54792 - "POST /ruptrapi/v1/organizations/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54793 - "PATCH /ruptrapi/v1/organizations/9918f3df-4d16-40b0-b35e-a0a0cb81a17c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54794 - "GET /ruptrapi/v1/organizations/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54795 - "GET /ruptrapi/v1/organizations/?include_deleted=true HTTP/1.1" 200 OK
