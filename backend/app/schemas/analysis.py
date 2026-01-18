@@ -20,6 +20,7 @@ class RiskLevel(str, Enum):
     LOW = "LOW"
 
 class AnalysisStatus(str, Enum):
+    PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
 
