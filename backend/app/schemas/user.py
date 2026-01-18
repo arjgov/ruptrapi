@@ -12,7 +12,6 @@ class UserBase(BaseModel):
     email: EmailStr
     name: Optional[str] = None
     role: Optional[UserRole] = UserRole.MEMBER
-    is_active: Optional[bool] = True
 
 class UserCreate(UserBase):
     organization_id: UUID
@@ -21,7 +20,6 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     name: Optional[str] = None
     role: Optional[UserRole] = None
-    is_active: Optional[bool] = None
     is_deleted: Optional[bool] = None
 
 class User(UserBase):

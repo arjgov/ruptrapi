@@ -1,138 +1,166 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List
 from uuid import UUID
 
-from app.core.database import get_db
+from app.core.database import get_async_db
 from app.models.consumer import Consumer, ConsumerDependency
-from app.models.organization import Organization
 from app.models.service import Service
 from app.schemas import consumer as schemas
 
 router = APIRouter()
 
-# --- Consumer CRUD ---
+# --- Consumers ---
 
 @router.post("/", response_model=schemas.Consumer)
-def create_consumer(consumer: schemas.ConsumerCreate, db: Session = Depends(get_db)):
-    # Verify organization exists
-    org = db.query(Organization).filter(Organization.id == consumer.organization_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    db_consumer = Consumer(
-        name=consumer.name,
-        description=consumer.description,
-        organization_id=consumer.organization_id
-    )
-    db.add(db_consumer)
-    db.commit()
-    db.refresh(db_consumer)
-    return db_consumer
+async def create_consumer(consumer_in: schemas.ConsumerCreate, db: AsyncSession = Depends(get_async_db)):
+    consumer = Consumer(**consumer_in.dict())
+    db.add(consumer)
+    await db.commit()
+    await db.refresh(consumer)
+    return consumer
 
 @router.get("/", response_model=List[schemas.Consumer])
-def list_consumers(
+async def list_consumers(
+    organization_id: UUID = None, 
     skip: int = 0, 
     limit: int = 100, 
-    organization_id: UUID = None,
     include_deleted: bool = False,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
-    query = db.query(Consumer)
-    
+    query = select(Consumer)
     if organization_id:
         query = query.filter(Consumer.organization_id == organization_id)
         
     if not include_deleted:
         query = query.filter(Consumer.is_deleted == False)
         
-    return query.offset(skip).limit(limit).all()
+    result = await db.execute(query.offset(skip).limit(limit))
+    return result.scalars().all()
 
-@router.get("/{id}", response_model=schemas.Consumer)
-def get_consumer(id: UUID, db: Session = Depends(get_db)):
-    db_consumer = db.query(Consumer).filter(Consumer.id == id).first()
-    if not db_consumer:
+@router.get("/{consumer_id}", response_model=schemas.Consumer)
+async def get_consumer(consumer_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(Consumer).filter(Consumer.id == consumer_id))
+    consumer = result.scalars().first()
+    if not consumer:
         raise HTTPException(status_code=404, detail="Consumer not found")
-    return db_consumer
+    return consumer
 
-@router.patch("/{id}", response_model=schemas.Consumer)
-def update_consumer(id: UUID, consumer_update: schemas.ConsumerUpdate, db: Session = Depends(get_db)):
-    db_consumer = db.query(Consumer).filter(Consumer.id == id).first()
-    if not db_consumer:
-        raise HTTPException(status_code=404, detail="Consumer not found")
-    
-    update_data = consumer_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_consumer, key, value)
-        
-    db.commit()
-    db.refresh(db_consumer)
-    return db_consumer
-
-# --- Dependency Management ---
-
-@router.post("/{consumer_id}/dependencies/", response_model=schemas.ConsumerDependency)
-def add_dependency(consumer_id: UUID, dep: schemas.ConsumerDependencyCreate, db: Session = Depends(get_db)):
-    # Verify consumer
-    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+@router.patch("/{consumer_id}", response_model=schemas.Consumer)
+async def update_consumer(
+    consumer_id: UUID, 
+    consumer_in: schemas.ConsumerUpdate, 
+    db: AsyncSession = Depends(get_async_db)
+):
+    result = await db.execute(select(Consumer).filter(Consumer.id == consumer_id))
+    consumer = result.scalars().first()
     if not consumer:
         raise HTTPException(status_code=404, detail="Consumer not found")
         
-    # Verify service
-    service = db.query(Service).filter(Service.id == dep.service_id).first()
-    if not service:
+    for field, value in consumer_in.dict(exclude_unset=True).items():
+        setattr(consumer, field, value)
+        
+    db.add(consumer)
+    await db.commit()
+    await db.refresh(consumer)
+    return consumer
+
+@router.delete("/{consumer_id}", response_model=schemas.Consumer)
+async def delete_consumer(consumer_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(Consumer).filter(Consumer.id == consumer_id))
+    consumer = result.scalars().first()
+    if not consumer:
+        raise HTTPException(status_code=404, detail="Consumer not found")
+        
+    consumer.is_deleted = True
+    db.add(consumer)
+    await db.commit()
+    await db.refresh(consumer)
+    return consumer
+
+# --- Dependencies ---
+
+@router.post("/{consumer_id}/dependencies/", response_model=schemas.ConsumerDependency)
+async def add_dependency(
+    consumer_id: UUID, 
+    dep_in: schemas.ConsumerDependencyCreate, 
+    db: AsyncSession = Depends(get_async_db)
+):
+    # 1. Verify Consumer
+    result = await db.execute(select(Consumer).filter(Consumer.id == consumer_id))
+    if not result.scalars().first():
+        raise HTTPException(status_code=404, detail="Consumer not found")
+        
+    # 2. Verify Service
+    result = await db.execute(select(Service).filter(Service.id == dep_in.service_id))
+    if not result.scalars().first():
         raise HTTPException(status_code=404, detail="Service not found")
 
-    # Check existence (including soft-deleted? If soft-deleted, we might want to revive it or create new)
-    # Unique constraint will fail if we duplicate.
-    # Let's check first.
-    existing = db.query(ConsumerDependency).filter(
+    # 3. Check for duplicates (including soft-deleted)
+    result = await db.execute(select(ConsumerDependency).filter(
         ConsumerDependency.consumer_id == consumer_id,
-        ConsumerDependency.service_id == dep.service_id,
-        ConsumerDependency.http_method == dep.http_method,
-        ConsumerDependency.path == dep.path
-    ).first()
+        ConsumerDependency.service_id == dep_in.service_id,
+        ConsumerDependency.http_method == dep_in.http_method,
+        ConsumerDependency.path == dep_in.path
+    ))
+    existing = result.scalars().first()
     
     if existing:
         if existing.is_deleted:
             # Revive
             existing.is_deleted = False
-            db.commit()
-            db.refresh(existing)
+            db.add(existing)
+            await db.commit()
+            await db.refresh(existing)
             return existing
         else:
             raise HTTPException(status_code=409, detail="Dependency already exists")
-
-    db_dep = ConsumerDependency(
+            
+    # 4. Create new
+    # Get consumer org ID (or pass implicitly if strict, but let's fetch consumer to be sure)
+    # Actually we just checked consumer exists but didn't fetch the object to use its org_id
+    # Optimally: fetch object in step 1.
+    result = await db.execute(select(Consumer).filter(Consumer.id == consumer_id))
+    consumer = result.scalars().first()
+    
+    dep = ConsumerDependency(
         consumer_id=consumer_id,
-        service_id=dep.service_id,
-        http_method=dep.http_method,
-        path=dep.path,
-        organization_id=consumer.organization_id
+        service_id=dep_in.service_id,
+        http_method=dep_in.http_method,
+        path=dep_in.path,
+        organization_id=consumer.organization_id # inherit from consumer
     )
-    db.add(db_dep)
-    db.commit()
-    db.refresh(db_dep)
-    return db_dep
+    db.add(dep)
+    await db.commit()
+    await db.refresh(dep)
+    return dep
 
 @router.get("/{consumer_id}/dependencies/", response_model=List[schemas.ConsumerDependency])
-def list_dependencies(consumer_id: UUID, db: Session = Depends(get_db)):
-    return db.query(ConsumerDependency).filter(
-        ConsumerDependency.consumer_id == consumer_id,
+async def list_dependencies(consumer_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(ConsumerDependency).filter(
+        ConsumerDependency.consumer_id == consumer_id, 
         ConsumerDependency.is_deleted == False
-    ).all()
+    ))
+    return result.scalars().all()
 
-@router.delete("/{consumer_id}/dependencies/{dep_id}", response_model=schemas.ConsumerDependency)
-def remove_dependency(consumer_id: UUID, dep_id: UUID, db: Session = Depends(get_db)):
-    dep = db.query(ConsumerDependency).filter(
-        ConsumerDependency.id == dep_id,
+@router.delete("/{consumer_id}/dependencies/{dependency_id}", response_model=schemas.ConsumerDependency)
+async def remove_dependency(
+    consumer_id: UUID, 
+    dependency_id: UUID, 
+    db: AsyncSession = Depends(get_async_db)
+):
+    result = await db.execute(select(ConsumerDependency).filter(
+        ConsumerDependency.id == dependency_id,
         ConsumerDependency.consumer_id == consumer_id
-    ).first()
+    ))
+    dep = result.scalars().first()
     
     if not dep:
         raise HTTPException(status_code=404, detail="Dependency not found")
         
     dep.is_deleted = True
-    db.commit()
-    db.refresh(dep)
+    db.add(dep)
+    await db.commit()
+    await db.refresh(dep)
     return dep

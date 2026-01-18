@@ -1,80 +1,93 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List
 from uuid import UUID
 
-from app.core.database import get_db
+from app.core.database import get_async_db
 from app.models.user import User
-from app.models.organization import Organization
 from app.schemas import user as schemas
 
 router = APIRouter()
 
 @router.post("/", response_model=schemas.User)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    # Verify organization exists
-    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    # Check email uniqueness
-    existing_user = db.query(User).filter(User.email == user.email).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    db_user = User(
-        email=user.email,
-        name=user.name,
-        role=user.role,
-        organization_id=user.organization_id
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+async def create_user(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_async_db)):
+    # Check existing by email
+    result = await db.execute(select(User).filter(User.email == user_in.email))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+    
+    # Check org exists (optional in V0, but nice to have)
+    # Ignored for speed, DB FK handles it
+    
+    user = User(**user_in.dict())
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 @router.get("/", response_model=List[schemas.User])
-def list_users(
+async def list_users(
+    organization_id: UUID = None, 
     skip: int = 0, 
     limit: int = 100, 
     include_deleted: bool = False,
-    organization_id: UUID = None,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
-    query = db.query(User)
-    
+    query = select(User)
     if organization_id:
         query = query.filter(User.organization_id == organization_id)
         
     if not include_deleted:
         query = query.filter(User.is_deleted == False)
         
-    return query.offset(skip).limit(limit).all()
-
-@router.get("/{id}", response_model=schemas.User)
-def get_user(id: UUID, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return db_user
+    result = await db.execute(query.offset(skip).limit(limit))
+    return result.scalars().all()
 
 @router.get("/by-email/{email}", response_model=schemas.User)
-def get_user_by_email(email: str, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == email).first()
-    if not db_user:
+async def get_user_by_email(email: str, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(User).filter(User.email == email))
+    user = result.scalars().first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return db_user
+    return user
 
-@router.patch("/{id}", response_model=schemas.User)
-def update_user(id: UUID, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == id).first()
-    if not db_user:
+@router.get("/{user_id}", response_model=schemas.User)
+async def get_user(user_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    update_data = user_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_user, key, value)
+    return user
+
+@router.patch("/{user_id}", response_model=schemas.User)
+async def update_user(
+    user_id: UUID, 
+    user_in: schemas.UserUpdate, 
+    db: AsyncSession = Depends(get_async_db)
+):
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
         
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    for field, value in user_in.dict(exclude_unset=True).items():
+        setattr(user, field, value)
+        
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+@router.delete("/{user_id}", response_model=schemas.User)
+async def delete_user(user_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.is_deleted = True
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
