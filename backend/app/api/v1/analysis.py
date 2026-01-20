@@ -97,7 +97,10 @@ async def process_analysis_run_task(
                         ConsumerDependency.is_deleted == False
                     )
                     if change.http_method:
-                        stmt_deps = stmt_deps.where(ConsumerDependency.http_method == change.http_method.upper())
+                        # Case-insensitive comparison (deps stored as lowercase, changes as uppercase)
+                        stmt_deps = stmt_deps.where(
+                            func.upper(ConsumerDependency.http_method) == change.http_method.upper()
+                        )
                     
                     result_deps = await db.execute(stmt_deps)
                     dependencies = result_deps.scalars().all()
@@ -107,8 +110,10 @@ async def process_analysis_run_task(
                         risk = RiskLevel.HIGH if change.severity == Severity.HIGH else RiskLevel.LOW
                         
                         impact = Impact(
+                            analysis_run_id=run_id,
                             api_change_id=change.id,
                             consumer_id=dep.consumer_id,
+                            consumer_name=dep.consumer_name,
                             organization_id=new_spec.organization_id,
                             risk_level=risk
                         )
@@ -299,22 +304,14 @@ async def list_impacts(
     api_change_id: UUID = None,
     db: AsyncSession = Depends(get_async_db)
 ):
+    """List impacts, optionally filtered by analysis_run_id or api_change_id"""
     query = select(Impact)
+    
     if api_change_id:
         query = query.filter(Impact.api_change_id == api_change_id)
     elif analysis_run_id:
-        # Join ApiChange to filter by specs of the run
-        # 1. Get Run
-        result_run = await db.execute(select(AnalysisRun).where(AnalysisRun.id == analysis_run_id))
-        run = result_run.scalars().first()
-        if not run:
-            raise HTTPException(status_code=404, detail="Analysis run not found")
-            
-        # 2. Filter Impact -> ApiChange -> (spec_ids)
-        query = query.join(ApiChange).where(
-            ApiChange.old_spec_id == run.old_spec_id,
-            ApiChange.new_spec_id == run.new_spec_id
-        )
+        # Now we have analysis_run_id in Impact table, so direct filter
+        query = query.filter(Impact.analysis_run_id == analysis_run_id)
         
     result = await db.execute(query)
     return result.scalars().all()

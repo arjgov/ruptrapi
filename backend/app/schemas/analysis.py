@@ -50,8 +50,10 @@ class ImpactBase(BaseModel):
 
 class Impact(ImpactBase):
     id: UUID
+    analysis_run_id: UUID
     api_change_id: UUID
     consumer_id: UUID
+    consumer_name: str
     organization_id: UUID
     created_at: datetime
     

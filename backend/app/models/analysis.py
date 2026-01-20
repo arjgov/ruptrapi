@@ -41,9 +41,12 @@ class ApiChange(BaseEntity):
 class Impact(BaseEntity):
     __tablename__ = "impacts"
     
+    analysis_run_id = Column(UUID(as_uuid=True), ForeignKey("analysis_runs.id"), nullable=False)
     api_change_id = Column(UUID(as_uuid=True), ForeignKey("api_changes.id"), nullable=False)
     consumer_id = Column(UUID(as_uuid=True), ForeignKey("consumers.id"), nullable=False)
+    consumer_name = Column(String, nullable=False)  # Denormalized for faster listing
     risk_level = Column(Enum(RiskLevel), nullable=False)
+
 
 class AnalysisRun(BaseEntity):
     __tablename__ = "analysis_runs"
