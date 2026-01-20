@@ -10,6 +10,7 @@ from app.core.database import get_async_db
 from app.models.service import Service, ApiSpecVersion
 from app.models.organization import Organization
 from app.schemas import service as schemas
+from app.schemas import consumer as consumer_schemas
 
 router = APIRouter()
 
@@ -158,7 +159,7 @@ async def list_specs(
 
 # --- Service Dependencies (Consumers using this service) ---
 
-@router.get("/{service_id}/dependencies/", response_model=List[Any])
+@router.get("/{service_id}/dependencies/", response_model=List[consumer_schemas.ConsumerDependency])
 async def list_service_dependencies(
     service_id: UUID,
     db: AsyncSession = Depends(get_async_db)
@@ -169,7 +170,7 @@ async def list_service_dependencies(
     if not result.scalars().first():
         raise HTTPException(status_code=404, detail="Service not found")
     
-    # Import ConsumerDependency
+    # Import ConsumerDependency model and schema
     from app.models.consumer import ConsumerDependency
     from app.schemas import consumer as consumer_schemas
     
@@ -180,4 +181,17 @@ async def list_service_dependencies(
     ).order_by(ConsumerDependency.created_at.desc())
     
     result = await db.execute(query)
-    return result.scalars().all()
+    items = result.scalars().all()
+    
+    # Convert to Pydantic models explicitly to be safe, 
+    # though response_model + from_attributes usually handles it.
+    # But since we are doing lazy import in function, best to map manually/safely
+    # or rely on response_model magic if the type matches.
+    # The previous error was because response_model=List[Any] so it tried to dump the raw ORM object.
+    # With List[schemas.ConsumerDependency], Pydantic will try to validate the ORM object against the schema.
+    
+    # We need to make sure the schema is available for the type hint in response_model
+    # Since 'schemas' is imported as 'service_schemas' usually, but here 'schemas' refers to 'app.schemas.service'.
+    # We need 'app.schemas.consumer'.
+    
+    return items
