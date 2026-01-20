@@ -15,6 +15,8 @@ class ConsumerDependencyCreate(ConsumerDependencyBase):
 class ConsumerDependency(ConsumerDependencyBase):
     id: UUID
     consumer_id: UUID
+    consumer_name: str
+    service_name: str
     organization_id: UUID
     is_deleted: bool
     created_at: datetime

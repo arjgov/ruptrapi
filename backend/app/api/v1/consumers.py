@@ -92,9 +92,10 @@ async def add_dependency(
     if not result.scalars().first():
         raise HTTPException(status_code=404, detail="Consumer not found")
         
-    # 2. Verify Service
+    # 2. Verify Service and get name
     result = await db.execute(select(Service).filter(Service.id == dep_in.service_id))
-    if not result.scalars().first():
+    service = result.scalars().first()
+    if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
     # 3. Check for duplicates (including soft-deleted)
@@ -118,18 +119,18 @@ async def add_dependency(
             raise HTTPException(status_code=409, detail="Dependency already exists")
             
     # 4. Create new
-    # Get consumer org ID (or pass implicitly if strict, but let's fetch consumer to be sure)
-    # Actually we just checked consumer exists but didn't fetch the object to use its org_id
-    # Optimally: fetch object in step 1.
+    # Fetch consumer to get org ID and name
     result = await db.execute(select(Consumer).filter(Consumer.id == consumer_id))
     consumer = result.scalars().first()
     
     dep = ConsumerDependency(
         consumer_id=consumer_id,
+        consumer_name=consumer.name,
         service_id=dep_in.service_id,
+        service_name=service.name,
         http_method=dep_in.http_method,
         path=dep_in.path,
-        organization_id=consumer.organization_id # inherit from consumer
+        organization_id=consumer.organization_id
     )
     db.add(dep)
     await db.commit()

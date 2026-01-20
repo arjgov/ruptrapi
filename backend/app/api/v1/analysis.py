@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from typing import List
 from uuid import UUID
@@ -64,10 +65,11 @@ async def process_analysis_run_task(
             for change_dict in changes_detected:
                 # Create ApiChange record
                 change = ApiChange(
+                    analysis_run_id=run_id,
                     service_id=new_spec.service_id,
                     old_spec_id=old_spec.id,
                     new_spec_id=new_spec.id,
-                    organization_id=new_spec.organization_id, # Required by BaseEntity
+                    organization_id=new_spec.organization_id,
                     change_type=change_dict["change_type"],
                     severity=change_dict["severity"],
                     http_method=change_dict.get("http_method"), 
@@ -86,14 +88,17 @@ async def process_analysis_run_task(
                 # Find consumers using this endpoint (Service -> Dependency)
                 service_id = new_spec.service_id
                 
-                if change.http_method and change.path:
-                    # Find dependencies matching this method/path for this service
+                if change.path:
+                    # If http_method is specified, filter by it. 
+                    # If it's None (Path removal), find ALL dependencies on this path.
                     stmt_deps = select(ConsumerDependency).where(
                         ConsumerDependency.service_id == service_id,
-                        ConsumerDependency.http_method == change.http_method.upper(), # Ensure case matches
                         ConsumerDependency.path == change.path,
                         ConsumerDependency.is_deleted == False
                     )
+                    if change.http_method:
+                        stmt_deps = stmt_deps.where(ConsumerDependency.http_method == change.http_method.upper())
+                    
                     result_deps = await db.execute(stmt_deps)
                     dependencies = result_deps.scalars().all()
                     
@@ -104,13 +109,9 @@ async def process_analysis_run_task(
                         impact = Impact(
                             api_change_id=change.id,
                             consumer_id=dep.consumer_id,
-                            organization_id=new_spec.organization_id, # Required by BaseEntity
-                            risk_level=risk # Mapped from severity
+                            organization_id=new_spec.organization_id,
+                            risk_level=risk
                         )
-                        # Note: Impact model uses risk_level, not severity. 
-                        # Check Impact model in Step 894: risk_level = Column(Enum(RiskLevel)...)
-                        # My previous code used 'severity=risk', which was wrong kwarg for Impact.
-                        
                         db.add(impact)
                         total_impacts += 1
 
@@ -128,6 +129,8 @@ async def process_analysis_run_task(
                 print(f"Worker: Run {run_id} completed successfully.")
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Worker: Error processing run {run_id}: {e}")
             await db.rollback()
             await _mark_run_failed(db, run_id, str(e))
@@ -193,17 +196,24 @@ async def trigger_analysis_run(
         raise HTTPException(status_code=404, detail="One or both spec versions not found")
         
     # Ensure they belong to the requested service
-    # (Checking one is usually enough if IDs came from trusted source, but good to be safe)
     if specs[0].service_id != run_in.service_id: 
          raise HTTPException(status_code=400, detail="Specs do not belong to the specified service")
+    
+    # Fetch service name for denormalization
+    stmt_svc = select(Service).where(Service.id == run_in.service_id)
+    result_svc = await db.execute(stmt_svc)
+    service = result_svc.scalars().first()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
 
     # Create Run Record
     new_run = AnalysisRun(
-        service_id=specs[0].service_id, # Assuming validation that belongs to same service
+        service_id=specs[0].service_id,
+        service_name=service.name,
         old_spec_id=old_id,
         new_spec_id=new_id,
         status=AnalysisStatus.PENDING,
-        organization_id=specs[0].organization_id, # Specs have organization_id? Yes.
+        organization_id=specs[0].organization_id,
         started_at=datetime.utcnow()
     )
     db.add(new_run)
@@ -221,19 +231,43 @@ async def trigger_analysis_run(
 
     return new_run
 
-@router.get("/runs/", response_model=List[schemas.AnalysisRun])
+@router.get("/runs/")
 async def list_analysis_runs(
     service_id: UUID = None, 
-    skip: int = 0, 
-    limit: int = 100, 
+    page: int = 1, 
+    size: int = 20, 
     db: AsyncSession = Depends(get_async_db)
 ):
+    """List analysis runs with pagination"""
+    # Build query
     query = select(AnalysisRun)
     if service_id:
         query = query.filter(AnalysisRun.service_id == service_id)
     
-    result = await db.execute(query.order_by(AnalysisRun.created_at.desc()).offset(skip).limit(limit))
-    return result.scalars().all()
+    # Get total count
+    count_query = select(func.count()).select_from(AnalysisRun)
+    if service_id:
+        count_query = count_query.filter(AnalysisRun.service_id == service_id)
+    result = await db.execute(count_query)
+    total = result.scalar()
+    
+    # Get paginated items
+    offset = (page - 1) * size
+    query = query.order_by(AnalysisRun.created_at.desc()).offset(offset).limit(size)
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
+    # Convert to schemas
+    from app.schemas import analysis as schemas
+    items_schemas = [schemas.AnalysisRun.from_orm(item) for item in items]
+    
+    return {
+        "items": items_schemas,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": (total + size - 1) // size
+    }
 
 @router.get("/runs/{run_id}", response_model=schemas.AnalysisRun)
 async def get_analysis_run(run_id: UUID, db: AsyncSession = Depends(get_async_db)):
@@ -248,19 +282,14 @@ async def list_api_changes(
     analysis_run_id: UUID, 
     db: AsyncSession = Depends(get_async_db)
 ):
-    # Fetch run to get spec IDs
+    # Verify run exists
     result = await db.execute(select(AnalysisRun).where(AnalysisRun.id == analysis_run_id))
     run = result.scalars().first()
     if not run:
-         # Optionally 404, but empty list is checking "changes for this run" which are none if run doesn't exist?
-         # Better to 404 if run invalid.
          raise HTTPException(status_code=404, detail="Analysis run not found")
          
-    # Query changes matching the spec pair from the run
-    query = select(ApiChange).where(
-        ApiChange.old_spec_id == run.old_spec_id,
-        ApiChange.new_spec_id == run.new_spec_id
-    )
+    # Query changes directly by analysis_run_id (fixes duplication bug)
+    query = select(ApiChange).where(ApiChange.analysis_run_id == analysis_run_id)
     result = await db.execute(query)
     return result.scalars().all()
 

@@ -34,6 +34,7 @@ class ApiChangeBase(BaseModel):
 
 class ApiChange(ApiChangeBase):
     id: UUID
+    analysis_run_id: UUID
     service_id: UUID
     old_spec_id: UUID
     new_spec_id: UUID
@@ -68,6 +69,7 @@ class AnalysisRunCreate(AnalysisRunBase):
 
 class AnalysisRun(AnalysisRunBase):
     id: UUID
+    service_name: str
     status: AnalysisStatus
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

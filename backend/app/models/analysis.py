@@ -27,6 +27,7 @@ class AnalysisStatus(str, enum.Enum):
 class ApiChange(BaseEntity):
     __tablename__ = "api_changes"
     
+    analysis_run_id = Column(UUID(as_uuid=True), ForeignKey("analysis_runs.id"), nullable=False)
     service_id = Column(UUID(as_uuid=True), ForeignKey("services.id"), nullable=False)
     old_spec_id = Column(UUID(as_uuid=True), ForeignKey("api_spec_versions.id"), nullable=False)
     new_spec_id = Column(UUID(as_uuid=True), ForeignKey("api_spec_versions.id"), nullable=False)
@@ -48,6 +49,7 @@ class AnalysisRun(BaseEntity):
     __tablename__ = "analysis_runs"
     
     service_id = Column(UUID(as_uuid=True), ForeignKey("services.id"), nullable=False)
+    service_name = Column(String, nullable=False)  # Denormalized for faster listing
     old_spec_id = Column(UUID(as_uuid=True), ForeignKey("api_spec_versions.id"), nullable=False)
     new_spec_id = Column(UUID(as_uuid=True), ForeignKey("api_spec_versions.id"), nullable=False)
     status = Column(Enum(AnalysisStatus), nullable=False)
@@ -55,3 +57,4 @@ class AnalysisRun(BaseEntity):
     completed_at = Column(DateTime, nullable=True)
     
     # Relationships can be added if needed
+

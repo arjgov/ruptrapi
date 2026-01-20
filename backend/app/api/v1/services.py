@@ -155,3 +155,29 @@ async def list_specs(
         
     result = await db.execute(query.order_by(ApiSpecVersion.created_at.desc()))
     return result.scalars().all()
+
+# --- Service Dependencies (Consumers using this service) ---
+
+@router.get("/{service_id}/dependencies/", response_model=List[Any])
+async def list_service_dependencies(
+    service_id: UUID,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """List all consumers that depend on this service"""
+    # Verify service exists
+    result = await db.execute(select(Service).filter(Service.id == service_id))
+    if not result.scalars().first():
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    # Import ConsumerDependency
+    from app.models.consumer import ConsumerDependency
+    from app.schemas import consumer as consumer_schemas
+    
+    # Query dependencies
+    query = select(ConsumerDependency).filter(
+        ConsumerDependency.service_id == service_id,
+        ConsumerDependency.is_deleted == False
+    ).order_by(ConsumerDependency.created_at.desc())
+    
+    result = await db.execute(query)
+    return result.scalars().all()

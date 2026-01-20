@@ -15,7 +15,7 @@ def health_check():
 @app.get("/")
 def root():
     return {
-        "message": "Welcome to Api Change Impact Analyzer",
+        "message": "Welcome to Ruptr API",
         "docs": "/docs",
         "redoc": "/redoc"
     }
