@@ -103,10 +103,13 @@ API Docs available at `http://localhost:8000/docs`.
 
 ## 🔮 Future Roadmap
 
--   **Frontend Dashboard:** Visual impact graph (Coming Soon).
+-   **Frontend Dashboard:** Visual impact graph and analysis history.
+-   **Automated Dependency Discovery:** Scan Next.js/Frontend codebases to auto-populate dependencies.
+-   **Smart Triage:** Custom reports to mark impacts as "Important" or "Ignored" with team comments.
+-   **Scheduled Polling:** Cron jobs to automatically fetch specs from Dev/Staging/Prod URLs (e.g., every 2 hours).
+-   **Universal Parser:** Support for both `openapi.json` and `openapi.yaml` formats.
 -   **CI/CD Integration:** Block PRs if high-risk breaking changes are detected without consumer sign-off.
 -   **Notifications:** Slack/Email alerts for impact.
--   **Automatic Dependency Discovery:** Parse consumer codebases to auto-populate dependencies.
 
 ---
 
