@@ -8,7 +8,7 @@ Designed for fast-moving startups and engineering teams where "move fast and bre
 
 ---
 
-## 🚀 Why Ruptr?
+## 🚀 Why RuptrAPI?
 
 In modern microservices architectures, it's hard to know who consumes your API and how.
 - **Frontend Developer:** "Why did the API stop working? The field `userId` is missing!"
